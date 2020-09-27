@@ -16,7 +16,7 @@ class DoorbotNormalizer implements ContextAwareDenormalizerInterface, Denormaliz
     public function supportsDenormalization($data, string $type, string $format = null, array $context = [])
     {
         return
-            false === ($context[__CLASS__] ?? false)
+            !array_key_exists(__CLASS__, $context[__CLASS__])
             && Doorbot::class.'[]' === $type
             && array_key_exists('doorbots', $data);
     }

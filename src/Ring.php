@@ -4,31 +4,27 @@ declare(strict_types=1);
 
 namespace Jmoati\Ring;
 
-use Jmoati\Ring\Exception\DoorbotNormalizerMissing;
-use Jmoati\Ring\Exception\JsonDecodingMissing;
 use Jmoati\Ring\Exception\ThumbnailNotFound;
 use Jmoati\Ring\Model\Authentication;
 use Jmoati\Ring\Model\Doorbot;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
-use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 class Ring
 {
     private HttpClientInterface $httpClient;
     private string $refreshToken;
-    private Serializer $serializer;
+    private SerializerInterface $serializer;
     private ?Authentication $authentication = null;
 
-    public function __construct(HttpClientInterface $httpClient, string $refreshToken, Serializer $serializer)
+    public function __construct(HttpClientInterface $httpClient, string $refreshToken, SerializerInterface $serializer)
     {
         $this->httpClient = $httpClient;
         $this->refreshToken = $refreshToken;
         $this->serializer = $serializer;
-
-        $this->checkSerializer();
     }
 
     public function updateSnapshots(): bool
@@ -36,10 +32,11 @@ class Ring
         $response = $this
             ->httpClient
             ->request(Request::METHOD_PUT, 'snapshots/update_all', $this->getDefaultOpions() + [
-                'json' => [
-                    'refresh' => true,
-                ],
-            ]);
+                                             'json' => [
+                                                 'doorbot_ids' => array_map(fn ($a) => $a->id, $this->getDoorbots()),
+                                                 'refresh' => true,
+                                             ],
+                                         ]);
 
         return Response::HTTP_NO_CONTENT === $response->getStatusCode();
     }
@@ -71,21 +68,10 @@ class Ring
     public function getDoorbots(): array
     {
         $response = $this
-        ->httpClient
-        ->request(Request::METHOD_GET, 'ring_devices', $this->getDefaultOpions());
+            ->httpClient
+            ->request(Request::METHOD_GET, 'ring_devices', $this->getDefaultOpions());
 
         return $this->serializer->deserialize($response->getContent(), Doorbot::class.'[]', JsonEncoder::FORMAT);
-    }
-
-    private function checkSerializer(): void
-    {
-        if (!$this->serializer->supportsDecoding(JsonEncoder::FORMAT)) {
-            throw new JsonDecodingMissing();
-        }
-
-        if (!$this->serializer->supportsDenormalization(['doorbots' => []], Doorbot::class.'[]')) {
-            throw new DoorbotNormalizerMissing();
-        }
     }
 
     private function getDefaultOpions(): array
