@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Jmoati\Ring;
 
+use Jmoati\Ring\Exception\DoorbotNormalizerMissing;
+use Jmoati\Ring\Exception\JsonDecodingMissing;
+use Jmoati\Ring\Exception\ThumbnailNotFound;
 use Jmoati\Ring\Model\Authentication;
 use Jmoati\Ring\Model\Doorbot;
-use Symfony\Component\HttpFoundation\File\Exception\FileNotFoundException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
@@ -25,6 +27,8 @@ class Ring
         $this->httpClient = $httpClient;
         $this->refreshToken = $refreshToken;
         $this->serializer = $serializer;
+
+        $this->checkSerializer();
     }
 
     public function updateSnapshots(): bool
@@ -42,6 +46,15 @@ class Ring
 
     public function getSnapshot(int $doorbotId): string
     {
+        $url = sprintf('snapshots?doorbot_ids[]=%d', $doorbotId);
+        $response = $this
+            ->httpClient
+            ->request(Request::METHOD_GET, $url, $this->getDefaultOpions());
+
+        if (Response::HTTP_OK !== $response->getStatusCode()) {
+            throw new ThumbnailNotFound($doorbotId);
+        }
+
         $url = sprintf('snapshots/image/%d', $doorbotId);
 
         $response = $this
@@ -49,7 +62,7 @@ class Ring
             ->request(Request::METHOD_GET, $url, $this->getDefaultOpions());
 
         if (Response::HTTP_OK !== $response->getStatusCode()) {
-            throw new FileNotFoundException('');
+            throw new ThumbnailNotFound($doorbotId);
         }
 
         return $response->getContent();
@@ -62,6 +75,17 @@ class Ring
         ->request(Request::METHOD_GET, 'ring_devices', $this->getDefaultOpions());
 
         return $this->serializer->deserialize($response->getContent(), Doorbot::class.'[]', JsonEncoder::FORMAT);
+    }
+
+    private function checkSerializer(): void
+    {
+        if (!$this->serializer->supportsDecoding(JsonEncoder::FORMAT)) {
+            throw new JsonDecodingMissing();
+        }
+
+        if (!$this->serializer->supportsDenormalization(['doorbots' => []], Doorbot::class.'[]')) {
+            throw new DoorbotNormalizerMissing();
+        }
     }
 
     private function getDefaultOpions(): array
